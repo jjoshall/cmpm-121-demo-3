@@ -83,6 +83,9 @@ function spawnCache(i: number, j: number) {
 
     // Clicking the button will increase the player's points and decrease the cache's value
     popupDiv.querySelector("#poke")!.addEventListener("click", () => {
+      if (pointVal <= 0) {
+        return;
+      }
       pointVal--;
       popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = pointVal
         .toString();
@@ -92,6 +95,9 @@ function spawnCache(i: number, j: number) {
 
     // Clicking the deposit button will deposit the player's points in the cache
     popupDiv.querySelector("#deposit")!.addEventListener("click", () => {
+      if (playerPoints <= 0) {
+        return;
+      }
       pointVal++;
       popupDiv.querySelector<HTMLSpanElement>("#value")!.innerHTML = pointVal
         .toString();
