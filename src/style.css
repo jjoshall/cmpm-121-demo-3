@@ -69,6 +69,12 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+img.leaflet-marker-icon {
+  transition: transform 0.2s ease;
+  transform-origin: center
+    center; /* Ensures rotation happens around the center */
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;

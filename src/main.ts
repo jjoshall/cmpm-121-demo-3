@@ -181,8 +181,102 @@ class CacheCell implements CellFlyweight {
   }
 }
 
+// Reference to movement buttons
+const northButton = document.getElementById("north")!;
+const southButton = document.getElementById("south")!;
+const westButton = document.getElementById("west")!;
+const eastButton = document.getElementById("east")!;
+
+// Player's current coordinates
+let currentLat = OAKES.lat;
+let currentLng = OAKES.lng;
+
+// Player's current heading in degrees (0 = north, 90 = east, 180 = south, 270 = west)
+let currentHeading = 0;
+
+// Function to rotate the player's icon
+function rotatePlayerIcon(degrees: number) {
+  currentHeading = degrees;
+  const element = playerMarker.getElement();
+  if (element) {
+    element.style.transform = `rotate(${currentHeading}deg)`;
+  }
+}
+
+// Function to move the player and update the map
+function movePlayer(latChange: number, lngChange: number) {
+  if (latChange > 0) {
+    // Moving north
+    rotatePlayerIcon(0);
+  } else if (latChange < 0) {
+    // Moving south
+    rotatePlayerIcon(180);
+  } else if (lngChange > 0) {
+    // Moving east
+    rotatePlayerIcon(90);
+  } else if (lngChange < 0) {
+    // Moving west
+    rotatePlayerIcon(270);
+  }
+
+  currentLat += latChange;
+  currentLng += lngChange;
+  playerMarker.setLatLng([currentLat, currentLng]);
+  map.panTo([currentLat, currentLng]);
+  updateStatusPanel();
+}
+
+// Add event listeners to buttons for movement
+northButton.addEventListener("click", () => {
+  movePlayer(TILE_DEGREES, 0); // Move north
+});
+southButton.addEventListener("click", () => {
+  movePlayer(-TILE_DEGREES, 0); // Move south
+});
+westButton.addEventListener("click", () => {
+  movePlayer(0, -TILE_DEGREES); // Move west
+});
+eastButton.addEventListener("click", () => {
+  movePlayer(0, TILE_DEGREES); // Move east
+});
+
+// Ensure the player's marker element supports rotation
+playerMarker.on("add", () => {
+  if (playerMarker.getElement()) {
+    playerMarker.getElement()!.style.transition = "transform 0.2s ease";
+  }
+});
+
 // Map to store extrinsic states of cells
 const cellStates = new Map<string, CellExtrinsicState>();
+
+// Function to update visible caches based on player's position
+function updateVisibleCaches() {
+  // Clear all existing cache layers
+  map.eachLayer((layer) => {
+    if (layer instanceof leaflet.Rectangle) {
+      map.removeLayer(layer);
+    }
+  });
+
+  // Get player's current cell indices
+  const playerI = latToI(currentLat);
+  const playerJ = lngToJ(currentLng);
+
+  // Spawn caches around the player
+  for (let di = -NEIGHBORHOOD_SIZE; di <= NEIGHBORHOOD_SIZE; di++) {
+    for (let dj = -NEIGHBORHOOD_SIZE; dj <= NEIGHBORHOOD_SIZE; dj++) {
+      const i = playerI + di;
+      const j = playerJ + dj;
+      if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
+        spawnCache(i, j);
+      }
+    }
+  }
+}
+
+// Update visible caches whenever the player moves
+map.on("moveend", updateVisibleCaches);
 
 // Function to spawn a cache cell at global grid indices (i, j)
 function spawnCache(i: number, j: number) {
