@@ -335,3 +335,78 @@ for (let di = -NEIGHBORHOOD_SIZE; di <= NEIGHBORHOOD_SIZE; di++) {
     }
   }
 }
+
+// Memento interface
+interface Memento {
+  getState(): Map<string, CellExtrinsicState>;
+}
+
+// Concrete Memento class
+class ConcreteMemento implements Memento {
+  private state: Map<string, CellExtrinsicState>;
+
+  constructor(state: Map<string, CellExtrinsicState>) {
+    // Deep copy the state to ensure immutability
+    this.state = new Map(state);
+  }
+
+  getState(): Map<string, CellExtrinsicState> {
+    return this.state;
+  }
+}
+
+// Originator class
+class Originator {
+  private state: Map<string, CellExtrinsicState>;
+
+  constructor(state: Map<string, CellExtrinsicState>) {
+    this.state = state;
+  }
+
+  save(): Memento {
+    return new ConcreteMemento(this.state);
+  }
+
+  restore(memento: Memento): void {
+    this.state = memento.getState();
+    // Redraw all caches based on the restored state
+    updateVisibleCaches();
+  }
+}
+
+// Caretaker class
+class Caretaker {
+  private mementos: Memento[] = [];
+  private originator: Originator;
+
+  constructor(originator: Originator) {
+    this.originator = originator;
+  }
+
+  backup(): void {
+    this.mementos.push(this.originator.save());
+  }
+
+  undo(): void {
+    if (!this.mementos.length) {
+      return;
+    }
+    const memento = this.mementos.pop()!;
+    this.originator.restore(memento);
+  }
+}
+
+// Initialize the originator and caretaker
+const originator = new Originator(cellStates);
+const caretaker = new Caretaker(originator);
+
+// Example usage: Save and restore state
+document.getElementById("saveState")!.addEventListener("click", () => {
+  caretaker.backup();
+  alert("State saved!");
+});
+
+document.getElementById("restoreState")!.addEventListener("click", () => {
+  caretaker.undo();
+  alert("State restored!");
+});
