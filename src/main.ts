@@ -187,6 +187,8 @@ const eastButton = document.getElementById("east")!;
 
 const geoButton = document.getElementById("sensor")!;
 
+const resetButton = document.getElementById("reset")!;
+
 // Player's current coordinates
 let currentLat = OAKES.lat;
 let currentLng = OAKES.lng;
@@ -203,7 +205,7 @@ function rotatePlayerIcon(degrees: number) {
   }
 }
 
-// Function to move the player and update the map
+// Update the movement history whenever the player moves
 function movePlayer(latChange: number, lngChange: number) {
   if (latChange > 0) {
     // Moving north
@@ -224,6 +226,24 @@ function movePlayer(latChange: number, lngChange: number) {
   playerMarker.setLatLng([currentLat, currentLng]);
   map.panTo([currentLat, currentLng]);
   updateStatusPanel();
+  updateMovementHistory();
+}
+
+// Array to store the player's movement history
+const movementHistory: leaflet.LatLng[] = [OAKES];
+
+// Polyline to show the player's movement history
+const movementPolyline = leaflet
+  .polyline(movementHistory, {
+    color: "limegreen",
+    weight: 3,
+  })
+  .addTo(map);
+
+// Function to update the movement history
+function updateMovementHistory() {
+  movementHistory.push(leaflet.latLng(currentLat, currentLng));
+  movementPolyline.setLatLngs(movementHistory);
 }
 
 // Add event listeners to buttons for movement
@@ -239,6 +259,7 @@ westButton.addEventListener("click", () => {
 eastButton.addEventListener("click", () => {
   movePlayer(0, TILE_DEGREES); // Move east
 });
+
 geoButton.addEventListener("click", () => {
   if (navigator.geolocation) {
     navigator.geolocation.getCurrentPosition(
@@ -249,6 +270,7 @@ geoButton.addEventListener("click", () => {
         playerMarker.setLatLng([currentLat, currentLng]);
         map.panTo([currentLat, currentLng]);
         updateStatusPanel();
+        updateMovementHistory();
         updateVisibleCaches();
       },
       (error) => {
@@ -260,6 +282,51 @@ geoButton.addEventListener("click", () => {
     alert("Geolocation is not supported by this browser.");
   }
 });
+
+resetButton.addEventListener("click", () => {
+  prompt("Are you sure you want to reset the game? Type 'yes' to confirm.") ===
+      "yes"
+    ? resetGame()
+    : alert("Game reset canceled.");
+});
+
+function resetGame() {
+  currentLat = OAKES.lat;
+  currentLng = OAKES.lng;
+  playerMarker.setLatLng([currentLat, currentLng]);
+  map.panTo([currentLat, currentLng]);
+  movementHistory.length = 0;
+  movementHistory.push(OAKES);
+  movementPolyline.setLatLngs(movementHistory);
+
+  // Return all coins back to their original cache
+  playerCoins.forEach((coin) => {
+    const cellKey = `${coin.i},${coin.j}`;
+    const extrinsicState = cellStates.get(cellKey);
+    if (extrinsicState) {
+      extrinsicState.coins.push(coin);
+    }
+  });
+  playerCoins.length = 0;
+
+  // Ensure all caches return their coins to their original state
+  cellStates.forEach((extrinsicState) => {
+    extrinsicState.coins.forEach((coin) => {
+      const originalCellKey = `${coin.i},${coin.j}`;
+      const originalExtrinsicState = cellStates.get(originalCellKey);
+      if (originalExtrinsicState && originalExtrinsicState !== extrinsicState) {
+        originalExtrinsicState.coins.push(coin);
+      }
+    });
+    extrinsicState.coins = extrinsicState.coins.filter(
+      (coin) =>
+        `${coin.i},${coin.j}` === `${extrinsicState.i},${extrinsicState.j}`,
+    );
+  });
+
+  updateStatusPanel();
+  updateVisibleCaches();
+}
 
 // Ensure the player's marker element supports smooth movement
 playerMarker.on("add", () => {
