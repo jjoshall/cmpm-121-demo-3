@@ -101,39 +101,41 @@ class CellFlyweightFactory {
 class CacheCell implements CellFlyweight {
   // Intrinsic state (shared among all cache cells)
   private static icon = leaflet.icon({
-    iconUrl: new URL("./images/cacheIcon.png", import.meta.url).toString(),
-    iconSize: [24, 24],
+    iconUrl: new URL("./images/coin.png", import.meta.url).toString(),
+    iconSize: [32, 32],
     iconAnchor: [12, 12],
   });
 
   draw(bounds: leaflet.LatLngBounds, extrinsicState: CellExtrinsicState): void {
     // Use the shared icon
-    const rect = leaflet.rectangle(bounds, { color: "blue", weight: 1 });
-    rect.bindTooltip("You found a cache!");
-    rect.addTo(map);
+    const marker = leaflet.marker(bounds.getCenter(), { icon: CacheCell.icon });
+    marker.bindTooltip("You found a cache!");
+    marker.addTo(map);
 
     // Use extrinsic state for unique data
-    this.setupInteraction(rect, extrinsicState);
+    this.setupInteraction(marker, extrinsicState);
   }
 
   private setupInteraction(
-    rect: leaflet.Rectangle,
+    marker: leaflet.Marker,
     extrinsicState: CellExtrinsicState,
   ): void {
-    rect.bindPopup(() => {
+    marker.bindPopup(() => {
       const { i, j, coins } = extrinsicState;
-
-      // Generate a list of coin IDs using the compact format
-      const coinList = coins.map((coin) =>
-        `${coin.i}:${coin.j}#${coin.serial}`
-      ).join(", ") ||
-        "No coins";
 
       // Popup content
       const popupDiv = document.createElement("div");
+      const coinListHtml = coins
+        .map(
+          (coin, index) =>
+            `<li>${index + 1}. ${coin.i}:${coin.j}#${coin.serial}</li>`,
+        )
+        .join("");
+
       popupDiv.innerHTML = `
         <div>This cache is at "${i}, ${j}".</div>
-        <div>Coins in cache: ${coinList}</div>
+        <div>Coins in cache:</div>
+        <ul>${coinListHtml || "<li>No coins</li>"}</ul>
         <button id="collect" style="color: lightblue;">Collect Coin</button>
         <button id="deposit" style="color: lightblue;">Deposit Coin</button>`;
 
@@ -151,8 +153,8 @@ class CacheCell implements CellFlyweight {
           `Collected coin ${coin.i}:${coin.j}#${coin.serial} from cache at (${i}, ${j}).`,
         );
         // Update the popup content
-        rect.closePopup();
-        rect.openPopup();
+        marker.closePopup();
+        marker.openPopup();
       });
 
       popupDiv.querySelector("#deposit")!.addEventListener("click", () => {
@@ -162,18 +164,14 @@ class CacheCell implements CellFlyweight {
         }
         // Remove a coin from the player's coins and add it to the cache
         const coin = playerCoins.pop()!;
-        // Update the coin's location to this cache
-        coin.i = i;
-        coin.j = j;
-        coin.serial = coins.length; // Assign new serial number in this cache
         coins.push(coin);
         updateStatusPanel();
         alert(
           `Deposited coin into cache at (${i}, ${j}) with new serial ${coin.serial}. Coin ID: ${coin.i}:${coin.j}#${coin.serial}`,
         );
         // Update the popup content
-        rect.closePopup();
-        rect.openPopup();
+        marker.closePopup();
+        marker.openPopup();
       });
 
       return popupDiv;
@@ -186,6 +184,8 @@ const northButton = document.getElementById("north")!;
 const southButton = document.getElementById("south")!;
 const westButton = document.getElementById("west")!;
 const eastButton = document.getElementById("east")!;
+
+const geoButton = document.getElementById("sensor")!;
 
 // Player's current coordinates
 let currentLat = OAKES.lat;
@@ -239,8 +239,29 @@ westButton.addEventListener("click", () => {
 eastButton.addEventListener("click", () => {
   movePlayer(0, TILE_DEGREES); // Move east
 });
+geoButton.addEventListener("click", () => {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        currentLat = latitude;
+        currentLng = longitude;
+        playerMarker.setLatLng([currentLat, currentLng]);
+        map.panTo([currentLat, currentLng]);
+        updateStatusPanel();
+        updateVisibleCaches();
+      },
+      (error) => {
+        console.error("Error getting geolocation: ", error);
+        alert("Unable to retrieve your location.");
+      },
+    );
+  } else {
+    alert("Geolocation is not supported by this browser.");
+  }
+});
 
-// Ensure the player's marker element supports rotation
+// Ensure the player's marker element supports smooth movement
 playerMarker.on("add", () => {
   if (playerMarker.getElement()) {
     playerMarker.getElement()!.style.transition = "transform 0.2s ease";
@@ -295,7 +316,7 @@ function spawnCache(i: number, j: number) {
 
   if (!extrinsicState) {
     // Initialize coins for this cache
-    const numCoins = Math.floor(luck([i, j, "initialCoins"].toString()) * 3); // 0 to 2 coins
+    const numCoins = Math.floor(luck([i, j, "initialCoins"].toString()) * 6); // 0 to 5 coins
     const coins: Coin[] = [];
     for (let serial = 0; serial < numCoins; serial++) {
       coins.push({ i, j, serial });
