@@ -152,6 +152,10 @@ class CacheCell implements CellFlyweight {
         alert(
           `Collected coin ${coin.i}:${coin.j}#${coin.serial} from cache at (${i}, ${j}).`,
         );
+
+        // Save game state to localStorage
+        saveGameState();
+
         // Update the popup content
         marker.closePopup();
         marker.openPopup();
@@ -169,6 +173,10 @@ class CacheCell implements CellFlyweight {
         alert(
           `Deposited coin into cache at (${i}, ${j}) with new serial ${coin.serial}. Coin ID: ${coin.i}:${coin.j}#${coin.serial}`,
         );
+
+        // Save game state to localStorage
+        saveGameState();
+
         // Update the popup content
         marker.closePopup();
         marker.openPopup();
@@ -227,6 +235,9 @@ function movePlayer(latChange: number, lngChange: number) {
   map.panTo([currentLat, currentLng]);
   updateStatusPanel();
   updateMovementHistory();
+
+  // Save game state to localStorage
+  saveGameState();
 }
 
 // Array to store the player's movement history
@@ -407,11 +418,46 @@ const playerCoins: Coin[] = [];
 const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
 function updateStatusPanel() {
   const coinList = playerCoins
-    .map((coin) => `${coin.i}:${coin.j}#${coin.serial}`)
+    .map(
+      (coin) =>
+        `<span class="coin" data-coin-id="${coin.i}:${coin.j}#${coin.serial}">${coin.i}:${coin.j}#${coin.serial}</span>`,
+    )
     .join(", ") || "No coins";
   statusPanel.innerHTML = `Your coins: ${coinList}`;
+
+  // Add event listeners to each coin
+  document.querySelectorAll(".coin").forEach((coinElement) => {
+    coinElement.addEventListener("click", () => {
+      const coinId = coinElement.getAttribute("data-coin-id")!;
+      const [i, j, serial] = coinId.split(/[:#]/).map(Number);
+      const coin = playerCoins.find(
+        (c) => c.i === i && c.j === j && c.serial === serial,
+      );
+      if (coin) {
+        handleCoinClick(coin);
+      }
+    });
+  });
 }
 updateStatusPanel();
+
+// Function to handle clicking on a coin in the player's inventory
+function handleCoinClick(coin: Coin) {
+  const cacheLat = coin.i * TILE_DEGREES + TILE_DEGREES / 2;
+  const cacheLng = coin.j * TILE_DEGREES + TILE_DEGREES / 2;
+  map.setView([cacheLat, cacheLng], GAMEPLAY_ZOOM_LEVEL);
+
+  alert(`Showing ${coin.i}:${coin.j}#${coin.serial}'s original cache.`);
+}
+
+// Add CSS to change cursor on hover
+const style = document.createElement("style");
+style.innerHTML = `
+  .coin:hover {
+    cursor: pointer;
+  }
+`;
+document.head.appendChild(style);
 
 // Spawning caches around the player
 for (let di = -NEIGHBORHOOD_SIZE; di <= NEIGHBORHOOD_SIZE; di++) {
@@ -498,3 +544,82 @@ document.getElementById("restoreState")!.addEventListener("click", () => {
   caretaker.undo();
   alert("State restored!");
 });
+
+// Save game state to localStorage
+// Tried getting help from Nathan Shturm's code but this saving and loading game state is not working
+function saveGameState() {
+  const gameState = {
+    playerLocation: {
+      lat: currentLat,
+      lng: currentLng,
+    },
+    movementHistory: movementHistory.map((latlng) => ({
+      lat: latlng.lat,
+      lng: latlng.lng,
+    })),
+    playerCoins: playerCoins.map((coin) => ({ ...coin })),
+    cellStates: Array.from(cellStates.entries()).map(([key, value]) => [
+      key,
+      { ...value, coins: value.coins.map((coin) => ({ ...coin })) },
+    ]),
+  };
+
+  localStorage.setItem("geocoinGameState", JSON.stringify(gameState));
+}
+
+// Load game state from localStorage
+function loadGameState() {
+  const savedState = localStorage.getItem("geocoinGameState");
+
+  if (savedState) {
+    const gameState = JSON.parse(savedState);
+
+    // Restore player location
+    currentLat = gameState.playerLocation.lat;
+    currentLng = gameState.playerLocation.lng;
+
+    // Restore movement history
+    movementHistory.length = 0;
+    gameState.movementHistory.forEach((loc: { lat: number; lng: number }) => {
+      movementHistory.push(leaflet.latLng(loc.lat, loc.lng));
+    });
+
+    if (movementHistory.length > 0) {
+      movementPolyline.setLatLngs(movementHistory);
+    }
+
+    // Restore player inventory
+    playerCoins.length = 0;
+    gameState.playerCoins.forEach((coin: Coin) => {
+      playerCoins.push(coin);
+    });
+
+    // Restore cell states
+    cellStates.clear();
+    gameState.cellStates.forEach(
+      ([key, value]: [string, CellExtrinsicState]) => {
+        cellStates.set(key, {
+          ...value,
+          coins: value.coins.map((coin) => ({ ...coin })),
+        });
+      },
+    );
+
+    updateStatusPanel();
+
+    // Refresh player marker and map position
+    playerMarker.setLatLng([currentLat, currentLng]);
+    map.panTo([currentLat, currentLng]);
+
+    updateVisibleCaches();
+  } else {
+    updateVisibleCaches();
+  }
+}
+
+// Load game state on initialization
+self.addEventListener("load", loadGameState);
+
+if (movementHistory.length === 0) {
+  movementHistory.push(leaflet.latLng(currentLat, currentLng));
+}
