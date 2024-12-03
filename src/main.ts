@@ -106,84 +106,93 @@ class CacheCell implements CellFlyweight {
     iconAnchor: [12, 12],
   });
 
+  // Draw is now purely about placing the marker
   draw(bounds: leaflet.LatLngBounds, extrinsicState: CellExtrinsicState): void {
-    // Use the shared icon
     const marker = leaflet.marker(bounds.getCenter(), { icon: CacheCell.icon });
-    marker.bindTooltip("You found a cache!");
     marker.addTo(map);
 
-    // Use extrinsic state for unique data
-    this.setupInteraction(marker, extrinsicState);
+    // Delegate UI logic to a dedicated handler
+    CacheCellUIHandler.handlePopup(marker, extrinsicState);
   }
+}
 
-  private setupInteraction(
+class CacheCellUIHandler {
+  static handlePopup(
     marker: leaflet.Marker,
     extrinsicState: CellExtrinsicState,
-  ): void {
-    marker.bindPopup(() => {
-      const { i, j, coins } = extrinsicState;
+  ) {
+    const popupDiv = document.createElement("div");
+    popupDiv.innerHTML = CacheCellUIHandler.generatePopupHtml(extrinsicState);
 
-      // Popup content
-      const popupDiv = document.createElement("div");
-      const coinListHtml = coins
-        .map(
-          (coin, index) =>
-            `<li>${index + 1}. ${coin.i}:${coin.j}#${coin.serial}</li>`,
-        )
-        .join("");
+    popupDiv.querySelector("#collect")!.addEventListener("click", () => {
+      CacheCellUIHandler.collectCoin(extrinsicState);
+      CacheCellUIHandler.refreshPopup(marker, extrinsicState);
+    });
 
-      popupDiv.innerHTML = `
+    popupDiv.querySelector("#deposit")!.addEventListener("click", () => {
+      CacheCellUIHandler.depositCoin(extrinsicState);
+      CacheCellUIHandler.refreshPopup(marker, extrinsicState);
+    });
+
+    marker.bindPopup(popupDiv);
+  }
+
+  static generatePopupHtml(extrinsicState: CellExtrinsicState): string {
+    // Generates HTML content for the popup without binding any behavior
+    const { i, j, coins } = extrinsicState;
+    const coinListHtml = coins
+      .map(
+        (coin, index) =>
+          `<li>${index + 1}. ${coin.i}:${coin.j}#${coin.serial}</li>`,
+      )
+      .join("");
+    return `
         <div>This cache is at "${i}, ${j}".</div>
         <div>Coins in cache:</div>
         <ul>${coinListHtml || "<li>No coins</li>"}</ul>
         <button id="collect" style="color: lightblue;">Collect Coin</button>
-        <button id="deposit" style="color: lightblue;">Deposit Coin</button>`;
+        <button id="deposit" style="color: lightblue;">Deposit Coin</button>
+    `;
+  }
 
-      // Event listeners
-      popupDiv.querySelector("#collect")!.addEventListener("click", () => {
-        if (coins.length === 0) {
-          alert("This cache has no coins to collect!");
-          return;
-        }
-        // Remove a coin from the cache and add it to the player's coins
-        const coin = coins.pop()!;
-        playerCoins.push(coin);
-        updateStatusPanel();
-        alert(
-          `Collected coin ${coin.i}:${coin.j}#${coin.serial} from cache at (${i}, ${j}).`,
-        );
+  static collectCoin(extrinsicState: CellExtrinsicState) {
+    if (extrinsicState.coins.length === 0) {
+      alert("This cache has no coins to collect!");
+      return;
+    }
+    const coin = extrinsicState.coins.pop()!;
+    playerCoins.push(coin);
+    updateStatusPanel();
+    saveGameState();
+  }
 
-        // Save game state to localStorage
-        saveGameState();
+  static depositCoin(extrinsicState: CellExtrinsicState) {
+    if (playerCoins.length === 0) {
+      alert("You have no coins to deposit!");
+      return;
+    }
+    const coin = playerCoins.pop()!;
+    extrinsicState.coins.push(coin);
+    updateStatusPanel();
+    saveGameState();
+  }
 
-        // Update the popup content
-        marker.closePopup();
-        marker.openPopup();
-      });
+  static refreshPopup(
+    marker: leaflet.Marker,
+    extrinsicState: CellExtrinsicState,
+  ) {
+    // Regenerate the popup content
+    const updatedPopupHtml = CacheCellUIHandler.generatePopupHtml(
+      extrinsicState,
+    );
 
-      popupDiv.querySelector("#deposit")!.addEventListener("click", () => {
-        if (playerCoins.length === 0) {
-          alert("You have no coins to deposit!");
-          return;
-        }
-        // Remove a coin from the player's coins and add it to the cache
-        const coin = playerCoins.pop()!;
-        coins.push(coin);
-        updateStatusPanel();
-        alert(
-          `Deposited coin into cache at (${i}, ${j}) with new serial ${coin.serial}. Coin ID: ${coin.i}:${coin.j}#${coin.serial}`,
-        );
+    // Update the marker's popup content
+    marker.setPopupContent(updatedPopupHtml);
 
-        // Save game state to localStorage
-        saveGameState();
-
-        // Update the popup content
-        marker.closePopup();
-        marker.openPopup();
-      });
-
-      return popupDiv;
-    });
+    // Optionally reopen the popup if it's closed
+    if (!marker.isPopupOpen()) {
+      marker.openPopup();
+    }
   }
 }
 
